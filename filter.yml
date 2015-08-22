@@ -1,0 +1,20 @@
+cap: ms
+filter: 
+    tcp: 
+        analysis: retransmission
+        flag: 
+            syn: 1
+
+flow: 
+    #tcp flow session time
+    session: 60
+    #session num
+    num: 2
+    #reserver num for src cap file
+    reserver: 10
+
+files: 
+    - tag: ms
+      file: ms.pcap
+    - tag: sp
+      file: sp.cap
