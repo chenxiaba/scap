@@ -48,21 +48,47 @@ how to solve this sence?
 
 """
 
-gconfig = None
-
 def load_conf(cfgfile):
-	print "config file is %s" % cfgfile
-	
-	with open(cfgfile) as f:
-		gconfig = yaml.load(f)
-		print gconfig
+    print "config file is %s" % cfgfile
+    global gconfig
+
+    with open(cfgfile) as f:
+        gconfig = yaml.load(f)
+        print gconfig
 
 def app_help():
-	print "Help:\n  python filter.py filter.yml"
+    print "Help:\n  python filter.py filter.yml"
+
+def get_src_cap():
+    """get src cap file"""
+    captag = gconfig['cap']
+    for f in gconfig['files']:
+        if f['tag'] == captag:
+            return f['file']
+
+    return None
 
 
-def decode_tcp(tcp, filter):
-	fin_flag = ( tcp.flags & 0x01 ) != 0
+
+def decode_eth(data, filter=None):
+    """
+    Neet to test packet with vlan, whether type is 8021.q
+    """
+    eth = dpkt.ethernet.Ethernet(data)
+    if eth.type == dpkt.ethernet.ETH_TYPE_IP :
+        return eth.data
+    
+    return None
+
+def decode_ip(ip, filter=None):
+    """Just support tcp """
+    if ip.p == dpkt.ip.IP_PROTO_TCP:
+        return ip.data
+
+    return None
+
+def decode_tcp(tcp, filter=None):
+    fin_flag = ( tcp.flags & 0x01 ) != 0
     syn_flag = ( tcp.flags & 0x02 ) != 0
     rst_flag = ( tcp.flags & 0x04 ) != 0
     psh_flag = ( tcp.flags & 0x08 ) != 0
@@ -70,49 +96,58 @@ def decode_tcp(tcp, filter):
     urg_flag = ( tcp.flags & 0x20 ) != 0
     ece_flag = ( tcp.flags & 0x40 ) != 0
     cwr_flag = ( tcp.flags & 0x80 ) != 0
+
     flags = (
-            ( "C" if cwr_flag else " " ) +
-            ( "E" if ece_flag else " " ) +
-            ( "U" if urg_flag else " " ) +
-            ( "A" if ack_flag else " " ) +
-            ( "P" if psh_flag else " " ) +
-            ( "R" if rst_flag else " " ) +
-            ( "S" if syn_flag else " " ) +
-            ( "F" if fin_flag else " " ) )
+        ( "C" if cwr_flag else " " ) +
+        ( "E" if ece_flag else " " ) +
+        ( "U" if urg_flag else " " ) +
+        ( "A" if ack_flag else " " ) +
+        ( "P" if psh_flag else " " ) +
+        ( "R" if rst_flag else " " ) +
+        ( "S" if syn_flag else " " ) +
+        ( "F" if fin_flag else " " )
+    )
 
+    print flags
+   
 
+def filter(capfile, filter=None):
+    """Use the filter to get the packet"""
 
-def decode_eth(data, filter):
-	"""
-	Neet to test packet with vlan, whether type is 8021.q
-	"""
-	eth = dpkt.ethernet.Ethernet(data)
-	if eth.type == dpkt.ethernet.ETH_TYPE_IP or 
-		eth.type == dpkt.ethernet.ETH_TYPE_IP6:
-		return eth.data
-    
-	return None
+    with open(capfile) as f:
+        pcap = dpkt.pcap.Reader(f)
 
-def decode_ip(ip, filter):
-	pass
+        for ts, buf in pcap:
+            ip = decode_eth(buf)
+            if not ip:
+                return
 
-def filter():
-	"""Use the info in cfg and run the filter logic"""
+            tcp = decode_ip(ip)
 
+            if not tcp:
+                return
+
+            decode_tcp(tcp)
+
+def start_work():
+    """Use the info in cfg and run the filter logic"""
+    src_cap = get_src_cap()
+
+    result = filter(src_cap)
 
 def main():
-	#prepare env
-	if len(sys.argv) < 2:
-		app_help()
-		return 
+    #prepare env
+    if len(sys.argv) < 2:
+        app_help()
+        return 
 
-	cfg = sys.argv[1]
+    cfg = sys.argv[1]
 
-	load_conf(cfg)
+    load_conf(cfg)
 
-	#start logic
-	filter()
+    #start logic
+    start_work()
 
 if __name__ == "__main__":
-	main()
+    main()
 
