@@ -4,6 +4,10 @@ filter:
         analysis: retransmission
         flag: 
             syn: 1
+    eth: 
+        vlan: 
+            - id: 389
+            - id: 399
 
 flow: 
     #tcp flow session time

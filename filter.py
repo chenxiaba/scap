@@ -61,16 +61,40 @@ def app_help():
 	print "Help:\n  python filter.py filter.yml"
 
 
-def decode_tcp(data, filter):
-	pass
+def decode_tcp(tcp, filter):
+	fin_flag = ( tcp.flags & 0x01 ) != 0
+    syn_flag = ( tcp.flags & 0x02 ) != 0
+    rst_flag = ( tcp.flags & 0x04 ) != 0
+    psh_flag = ( tcp.flags & 0x08 ) != 0
+    ack_flag = ( tcp.flags & 0x10 ) != 0
+    urg_flag = ( tcp.flags & 0x20 ) != 0
+    ece_flag = ( tcp.flags & 0x40 ) != 0
+    cwr_flag = ( tcp.flags & 0x80 ) != 0
+    flags = (
+            ( "C" if cwr_flag else " " ) +
+            ( "E" if ece_flag else " " ) +
+            ( "U" if urg_flag else " " ) +
+            ( "A" if ack_flag else " " ) +
+            ( "P" if psh_flag else " " ) +
+            ( "R" if rst_flag else " " ) +
+            ( "S" if syn_flag else " " ) +
+            ( "F" if fin_flag else " " ) )
+
+
 
 def decode_eth(data, filter):
+	"""
+	Neet to test packet with vlan, whether type is 8021.q
+	"""
+	eth = dpkt.ethernet.Ethernet(data)
+	if eth.type == dpkt.ethernet.ETH_TYPE_IP or 
+		eth.type == dpkt.ethernet.ETH_TYPE_IP6:
+		return eth.data
+    
+	return None
+
+def decode_ip(ip, filter):
 	pass
-
-def decode_ip(data, filter):
-	pass
-
-
 
 def filter():
 	"""Use the info in cfg and run the filter logic"""
