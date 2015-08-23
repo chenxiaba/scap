@@ -222,6 +222,11 @@ def filter(capfile, filter=None):
 
             if result:
                 print "Find what i want now..%s" % connection_id_to_str(cid)
+                with open("syn.pcap", 'w') as fwrite:
+                    pwrite = dpkt.pcap.Writer(fwrite)
+                    pwrite.writepkt(buf, ts)
+                    pwrite.close()
+                    fwrite.close();
                 return
 
 def start_work():
