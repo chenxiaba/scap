@@ -1,7 +1,10 @@
 #!/usr/bin/python
 import yaml
-import sys
 import dpkt
+
+import sys
+import socket
+
 """
 src cap file and filter is used to find one or more flow.
 then use the conn_id to find packet in other cap file.
@@ -47,9 +50,23 @@ how to solve this sence?
 ----------------------------------------------------------
 
 """
+gconfig = None
+gstat = {}
+connection_table = {}
+
+def app_init():
+    global gstat
+
+    #prepare env
+    if len(sys.argv) < 2:
+        app_help()
+        return 
+
+    return True
 
 def load_conf(cfgfile):
     print "config file is %s" % cfgfile
+
     global gconfig
 
     with open(cfgfile) as f:
@@ -69,6 +86,46 @@ def get_src_cap():
     return None
 
 
+def connection_id_to_str (cid, v=4) :
+    """
+    This converts the connection ID cid which is a tuple of 
+    (source_ip_address, source_tcp_port, 
+        destination_ip_address, destination_tcp_port) 
+    to a string.  
+    v is either 4 for IPv4 or 6 for IPv6
+    """
+    if v == 4 :
+        src_ip_addr_str = socket.inet_ntoa(cid[0])
+        dst_ip_addr_str = socket.inet_ntoa(cid[2])
+        return src_ip_addr_str + \
+            ":" + str(cid[1])+ \
+            "=>"+dst_ip_addr_str + \
+            ":" + str(cid[3]) \
+
+    elif v == 6 :
+        src_ip_addr_str = socket.inet_ntop(AF_INET6, cid[0])
+        dst_ip_addr_str = socket.inet_ntop(AF_INET6, cid[2])
+        return src_ip_addr_str + \
+            "." + str(cid[1])+ \
+            "=>"+dst_ip_addr_str + \
+            "." + str(cid[3])
+    else :
+        raise ValueError('Argument to connection_id_to_str must be 4 or 6, is %d' % v)
+
+class Connection_object :
+    """A connection object stores the state of the tcp connection"""
+    def __init__ ( self, isn, seq, string  ) :
+        # initial sequence number.  All sequence numbers are relative to this number.
+        self.isn = isn     
+        # last sequence number seen.  I'm not sure I need to keep this.         
+        self.seq = seq   
+        # the keys are the relative sequence numbers, the values are the strings                  
+        self.buffer = { seq: string } 
+
+        self.stat = {}
+
+    def set_filter():
+        pass
 
 def decode_eth(data, filter=None):
     """
@@ -83,11 +140,11 @@ def decode_eth(data, filter=None):
 def decode_ip(ip, filter=None):
     """Just support tcp """
     if ip.p == dpkt.ip.IP_PROTO_TCP:
-        return ip.data
+        return ip.data, ip.src, ip.dst
 
-    return None
+    return None, None, None
 
-def decode_tcp(tcp, filter=None):
+def decode_tcp(src, dst, tcp, filter=None):
     fin_flag = ( tcp.flags & 0x01 ) != 0
     syn_flag = ( tcp.flags & 0x02 ) != 0
     rst_flag = ( tcp.flags & 0x04 ) != 0
@@ -97,6 +154,7 @@ def decode_tcp(tcp, filter=None):
     ece_flag = ( tcp.flags & 0x40 ) != 0
     cwr_flag = ( tcp.flags & 0x80 ) != 0
 
+    #For debug
     flags = (
         ( "C" if cwr_flag else " " ) +
         ( "E" if ece_flag else " " ) +
@@ -109,7 +167,40 @@ def decode_tcp(tcp, filter=None):
     )
 
     print flags
-   
+
+    cid, res = get_cid((src, tcp.sport, dst, tcp.dport))
+
+    if syn_flag and not ack_flag:
+        
+        if not res:
+            #New flow
+            connection_table[cid] = Connection_object ( 
+                isn = tcp.seq, seq = tcp.seq, string = "" )
+            print "Find first SYN. create table. %s" % connection_id_to_str(cid)
+
+            return True, cid
+        else:
+            print "Meet retransmission SYN packet. %s" % connection_id_to_str(cid)
+            return True, cid
+    else:
+        return False, cid
+def get_filter_tcp():
+    filter = gconfig['filter']
+    tcp = filter['tcp']
+
+def get_cid(cid):
+    """
+    find flow, if not, create it
+    """
+    if cid in connection_table:
+        return cid, True
+
+    conn_id = (cid[2], cid[3],cid[0],cid[1])
+
+    if conn_id in connection_table:
+        return conn_id, True
+
+    return cid, False
 
 def filter(capfile, filter=None):
     """Use the filter to get the packet"""
@@ -120,14 +211,18 @@ def filter(capfile, filter=None):
         for ts, buf in pcap:
             ip = decode_eth(buf)
             if not ip:
-                return
+                continue
 
-            tcp = decode_ip(ip)
+            tcp, src, dst = decode_ip(ip)
 
             if not tcp:
-                return
+                continue
 
-            decode_tcp(tcp)
+            result, cid = decode_tcp(src, dst, tcp)
+
+            if result:
+                print "Find what i want now..%s" % connection_id_to_str(cid)
+                return
 
 def start_work():
     """Use the info in cfg and run the filter logic"""
@@ -136,10 +231,9 @@ def start_work():
     result = filter(src_cap)
 
 def main():
-    #prepare env
-    if len(sys.argv) < 2:
-        app_help()
-        return 
+    #stat
+    if not app_init():
+        return
 
     cfg = sys.argv[1]
 

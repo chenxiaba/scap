@@ -1,7 +1,8 @@
 cap: ms
 filter: 
     tcp: 
-        analysis: retransmission
+        analysis: 
+            - retransmission: True
         flag: 
             syn: 1
     eth: 
