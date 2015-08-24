@@ -1,14 +1,16 @@
 cap: ms
 filter: 
     tcp: 
-        analysis: 
-            - retransmission: True
-        flag: 
-            syn: 1
+        analysis:  retransmission
+        flags: syn
+
+    ip:
+        src: "1.1.1.1"
+        dst: "2.2.2.2"
+
     eth: 
-        vlan: 
-            - id: 389
-            - id: 399
+        vlan: 389
+        mac: "ab:cd:ef:gh"
 
 flow: 
     #tcp flow session time

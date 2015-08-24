@@ -52,11 +52,10 @@ how to solve this sence?
 """
 gconfig = None
 gstat = {}
-connection_table = {}
+#conn_table is a table to save flow info
+gconn_table = {}
 
 def app_init():
-    global gstat
-
     #prepare env
     if len(sys.argv) < 2:
         app_help()
@@ -85,6 +84,35 @@ def get_src_cap():
 
     return None
 
+def get_tcp_filter():
+    filter = gconfig['filter']
+    tcp = filter['tcp']
+
+    filter_map = {}
+
+    if "analysis" in tcp:
+        filter_map["analysis" ] = tcp["analysis" ]
+
+    if "flag" in tcp:
+        filter_map["flag" ] = tcp["flag" ]
+
+    return filter_map
+    
+def get_ip_filter():
+
+    pass
+
+def get_eth_filter():
+    pass
+
+
+
+def inc_stat(key):
+    global gstat
+    if key in gstat:
+        gstat[key] +=1
+    else:
+        gstat[key] = 1
 
 def connection_id_to_str (cid, v=4) :
     """
@@ -124,9 +152,6 @@ class Connection_object :
 
         self.stat = {}
 
-    def set_filter():
-        pass
-
 def decode_eth(data, filter=None):
     """
     Neet to test packet with vlan, whether type is 8021.q
@@ -145,6 +170,11 @@ def decode_ip(ip, filter=None):
     return None, None, None
 
 def decode_tcp(src, dst, tcp, filter=None):
+    """
+    @filter: a map act as  simple filter
+    """
+    global gconn_table
+
     fin_flag = ( tcp.flags & 0x01 ) != 0
     syn_flag = ( tcp.flags & 0x02 ) != 0
     rst_flag = ( tcp.flags & 0x04 ) != 0
@@ -171,39 +201,55 @@ def decode_tcp(src, dst, tcp, filter=None):
     cid, res = get_cid((src, tcp.sport, dst, tcp.dport))
 
     if syn_flag and not ack_flag:
-        
         if not res:
             #New flow
-            connection_table[cid] = Connection_object ( 
+            gconn_table[hash(cid)] = Connection_object ( 
                 isn = tcp.seq, seq = tcp.seq, string = "" )
-            print "Find first SYN. create table. %s" % connection_id_to_str(cid)
 
+            inc_stat("create_flow")
             return True, cid
         else:
             print "Meet retransmission SYN packet. %s" % connection_id_to_str(cid)
+            inc_stat("syn_retrans")
             return True, cid
+
     else:
         return False, cid
-def get_filter_tcp():
-    filter = gconfig['filter']
-    tcp = filter['tcp']
+
 
 def get_cid(cid):
     """
     find flow, if not, create it
     """
-    if cid in connection_table:
+    global gconn_table
+
+    if cid in gconn_table:
         return cid, True
 
     conn_id = (cid[2], cid[3],cid[0],cid[1])
 
-    if conn_id in connection_table:
+    if conn_id in gconn_table:
         return conn_id, True
 
     return cid, False
 
-def filter(capfile, filter=None):
-    """Use the filter to get the packet"""
+def write_pkt(fwrite, buf, ts=None):
+    #fwrite = open("syn.pcap", 'w') 
+    pwrite = dpkt.pcap.Writer(fwrite)
+    pwrite.writepkt(buf, ts)
+    pwrite.close()
+    fwrite.close();
+    pass
+
+def filter_src(capfile, filter=None,  save_flag=False, writer=None):
+    """Use the filter to get the packet
+    @capfile: pcap file
+    @filter: used to filter packet
+    @save_flag: whether to save packet
+    """
+    RET_SESSION_OUT
+    RET_READ_OVER
+    RET_CID
 
     with open(capfile) as f:
         pcap = dpkt.pcap.Reader(f)
@@ -218,16 +264,23 @@ def filter(capfile, filter=None):
             if not tcp:
                 continue
 
-            result, cid = decode_tcp(src, dst, tcp)
+            result, cid = decode_tcp(src, dst, tcp, filter)
 
-            if result:
-                print "Find what i want now..%s" % connection_id_to_str(cid)
-                with open("syn.pcap", 'w') as fwrite:
-                    pwrite = dpkt.pcap.Writer(fwrite)
-                    pwrite.writepkt(buf, ts)
-                    pwrite.close()
-                    fwrite.close();
-                return
+            if result: 
+                if save_flag and writer:
+                    #Save pkt
+                    writer.writepkt(buf, ts)
+                else:
+                    #return cid
+                    return cid
+
+            #Calc session
+            if session < 0:
+                return True
+
+        return False
+
+
 
 def start_work():
     """Use the info in cfg and run the filter logic"""
