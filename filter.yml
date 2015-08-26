@@ -1,8 +1,8 @@
 cap: ms
 filter: 
     tcp: 
-        analysis:  retransmission
-        flags: syn
+        analysis:  retrans
+        flag: syn
 
     ip:
         src: "1.1.1.1"

@@ -52,6 +52,8 @@ how to solve this sence?
 """
 gconfig = None
 gstat = {}
+gfilter_map = {}
+
 #conn_table is a table to save flow info
 gconn_table = {}
 
@@ -84,28 +86,30 @@ def get_src_cap():
 
     return None
 
-def get_tcp_filter():
+def init_tcp_filter():
+    global gconfig
+    global gfilter
+
     filter = gconfig['filter']
     tcp = filter['tcp']
 
-    filter_map = {}
-
     if "analysis" in tcp:
-        filter_map["analysis" ] = tcp["analysis" ]
+        if  tcp["analysis" ]== "retrans":
+            gfilter_map["retrans" ] = True
 
     if "flag" in tcp:
-        filter_map["flag" ] = tcp["flag" ]
+        if tcp["flag"] == "syn":
+            gfilter_map["retrans" ] = True
 
-    return filter_map
+        elif tcp["flag"] == "reset":
+            gfilter_map["reset" ] = True
     
-def get_ip_filter():
+def init_ip_filter():
 
     pass
 
-def get_eth_filter():
+def init_eth_filter():
     pass
-
-
 
 def inc_stat(key):
     global gstat
@@ -208,13 +212,29 @@ def decode_tcp(src, dst, tcp, filter=None):
 
             inc_stat("create_flow")
             return True, cid
+
         else:
             print "Meet retransmission SYN packet. %s" % connection_id_to_str(cid)
             inc_stat("syn_retrans")
-            return True, cid
 
+            if "retrans" in gfilter_map:
+                if "syn" in gfilter_map:
+                    return True, cid
+                
+                return True, cid
     else:
-        return False, cid
+        #not syn flow, drop
+        if not res:
+            inc_stat("no_flow_drop")
+            return False, None
+
+        conn_table = gconn_table[hash(cid)]
+
+        if :
+            pass
+
+
+
 
 
 def get_cid(cid):
@@ -223,12 +243,12 @@ def get_cid(cid):
     """
     global gconn_table
 
-    if cid in gconn_table:
+    if hash(cid) in gconn_table:
         return cid, True
 
     conn_id = (cid[2], cid[3],cid[0],cid[1])
 
-    if conn_id in gconn_table:
+    if hash(conn_id) in gconn_table:
         return conn_id, True
 
     return cid, False
