@@ -146,15 +146,20 @@ def connection_id_to_str (cid, v=4) :
 
 class Connection_object :
     """A connection object stores the state of the tcp connection"""
-    def __init__ ( self, isn, seq, string  ) :
-        # initial sequence number.  All sequence numbers are relative to this number.
-        self.isn = isn     
-        # last sequence number seen.  I'm not sure I need to keep this.         
-        self.seq = seq   
-        # the keys are the relative sequence numbers, the values are the strings                  
-        self.buffer = { seq: string } 
+    def __init__ ( self, isn ) :
+        # client initial sequence number.  All sequence numbers are relative to this number.
+        self.cisn = isn     
+        #server initial sequence number
+        self.siisn = None
 
-        self.stat = {}
+        # the keys are the relative sequence numbers, the values are the strings                  
+        self.buffer = {  } 
+
+    def set_sisn(server_isn):
+        session.sisn = server_isn
+
+    def get_sisn():
+        return session.sisn
 
 def decode_eth(data, filter=None):
     """
@@ -200,40 +205,48 @@ def decode_tcp(src, dst, tcp, filter=None):
         ( "F" if fin_flag else " " )
     )
 
-    print flags
+    #match base filter
+    if "cid" in gfilter_map:
+        if comp_cid(cid, gfilter_map["cid"]):
+            return True, cid
 
+        return False, None
+
+    #query cid
     cid, res = get_cid((src, tcp.sport, dst, tcp.dport))
 
     if syn_flag and not ack_flag:
-        if not res:
-            #New flow
-            gconn_table[hash(cid)] = Connection_object ( 
-                isn = tcp.seq, seq = tcp.seq, string = "" )
-
-            inc_stat("create_flow")
+        if res and ("retrans" in gfilter_map):
+            inc_stat("syn_retrans")
             return True, cid
 
-        else:
-            print "Meet retransmission SYN packet. %s" % connection_id_to_str(cid)
-            inc_stat("syn_retrans")
+        #New flow
+        gconn_table[hash(cid)] = Connection_object ( 
+           cisn = tcp.seq )
 
-            if "retrans" in gfilter_map:
-                if "syn" in gfilter_map:
-                    return True, cid
-                
-                return True, cid
-    else:
-        #not syn flow, drop
-        if not res:
-            inc_stat("no_flow_drop")
-            return False, None
+        inc_stat("create_flow")
+        return True, cid
+    
+    #Some flow without syn , drop it
+    if not res:
+        inc_stat("no_flow_pkt")
+        return False, None
 
-        conn_table = gconn_table[hash(cid)]
+    #Get conn_table
+    conn_table = gconn_table[hash(cid)]
 
-        if :
-            pass
+    #SYN-ACK
+    if syn_flag and ack_flag:
+        #Check sisn
+        if conn_table.get_sisn() and ("retrans" in gfilter_map):
+            inc_stat("syn_ack_retrans")
+            return  True, cid
 
+        gconn_table[hash(cid)].set_sisn(tcp.seq);
+        return False, None 
 
+    #other packet
+    
 
 
 
@@ -252,6 +265,15 @@ def get_cid(cid):
         return conn_id, True
 
     return cid, False
+
+def comp_cid(cid, cid2):
+    if  cid == cid2:
+        return True
+     
+     conn_id = (cid[2], cid[3],cid[0],cid[1])
+
+     if conn_id == cid2:
+        return True
 
 def write_pkt(fwrite, buf, ts=None):
     #fwrite = open("syn.pcap", 'w') 
